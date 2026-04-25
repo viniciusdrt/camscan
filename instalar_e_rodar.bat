@@ -11,9 +11,14 @@ python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo Python nao encontrado. Baixando...
     curl -o python_installer.exe https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe
-    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1
+    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1
     del python_installer.exe
-    echo Python instalado com sucesso!
+    echo Python instalado!
+    echo.
+    echo IMPORTANTE: O Python foi instalado agora.
+    echo Por favor, feche esta janela e execute o instalar_e_rodar.bat novamente.
+    pause
+    exit
 ) else (
     echo Python ja instalado!
 )
@@ -27,7 +32,12 @@ if %errorlevel% neq 0 (
     curl -o nmap_installer.exe https://nmap.org/dist/nmap-7.95-setup.exe
     nmap_installer.exe /S
     del nmap_installer.exe
-    echo Nmap instalado com sucesso!
+    echo Nmap instalado!
+    echo.
+    echo IMPORTANTE: O Nmap foi instalado agora.
+    echo Por favor, feche esta janela e execute o instalar_e_rodar.bat novamente.
+    pause
+    exit
 ) else (
     echo Nmap ja instalado!
 )
