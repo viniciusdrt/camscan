@@ -33,6 +33,36 @@ Pequenas empresas, condomínios, clínicas e comércios — qualquer ambiente qu
 
 Desenvolvido por Vinicius Duarte e Enzo Gomes — estudantes de Ciência da Computação no UniCEUB.
 
+## Como usar
+
+### Usuário final (recomendado)
+1. Baixe o arquivo `CamScan.zip` na seção [Releases](https://github.com/viniciusdrt/camscan/releases)
+2. Extraia o arquivo
+3. Abra o arquivo `.env` e adicione sua chave do Groq:
+GROQ_API_KEY=sua_chave_aqui
+4. Clique duas vezes em `instalar_e_rodar.bat`
+5. O CamScan abrirá automaticamente no navegador
+
+### Desenvolvedores
+1. Clone o repositório:
+```bash
+   git clone https://github.com/viniciusdrt/camscan.git
+```
+2. Adicione o `nuclei.exe` na raiz do projeto
+3. Crie o arquivo `.env` com sua chave do Groq
+4. Instale as dependências:
+```bash
+   pip install python-nmap streamlit groq python-dotenv
+```
+5. Execute:
+```bash
+   python -m streamlit run interface_streamlit.py
+```
+
+## Pré-requisitos
+
+O `instalar_e_rodar.bat` instala tudo automaticamente. Para rodar manualmente, você precisa de Python 3.13+, Nmap e uma chave da API do Groq ([console.groq.com](https://console.groq.com)).
+
 ## Status
 
 🚧 Em desenvolvimento — MVP em construção.
