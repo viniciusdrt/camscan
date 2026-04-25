@@ -7,8 +7,11 @@ from modules.llm_response import processar_resultados
 st.title("CamScan")
 st.write("Escaneie sua rede e descubra se suas câmeras estão seguras.")
 
+# Modo de demonstração
+modo_demo = st.checkbox("Usar dados de demonstração (sem câmera real)")
+
 # Campo de texto pra digitar a máscara de rede
-mascara = st.text_input("Digite sua máscara de rede:", placeholder="Ex: 267.067.6.0/24")
+mascara = st.text_input("Digite sua máscara de rede:", placeholder="Ex: 192.168.0.0/24")
 
 # Botão pra iniciar o scan
 iniciar = st.button("Iniciar Scan")
@@ -16,42 +19,48 @@ iniciar = st.button("Iniciar Scan")
 # Só executa se o usuário clicou no botão e digitou a máscara
 if iniciar and mascara:
 
-    # Etapa 1: Descoberta de câmeras
-    st.info("🔎 Procurando câmeras na rede...")
-    cameras = escanear_rede(mascara)
-
-    # Se não encontrou nenhuma câmera, avisa o usuário e para por aqui
-    if not cameras:
-        st.warning("Nenhuma câmera encontrada na rede informada.")
-
-    # Se encontrou, mostra quantas achou e continua
-    else:
-        st.success(f"✅ {len(cameras)} câmera(s) encontrada(s)!")
-        # Etapa 2: Análise de vulnerabilidades
-        st.info("🔍 Analisando a segurança das câmeras...")
-        barra = st.progress(0, text="Iniciando análise...")
-
-        resultados = []
-        for i, camera in enumerate(cameras):
-            # Atualiza o status e a barra pra cada câmera
-            barra.progress(
-                int((i / len(cameras)) * 100),
-                text=f"Analisando câmera {i + 1} de {len(cameras)}: {camera['ip']}"
-            )
-            # Roda o Nuclei só nessa câmera
-            resultado_camera = nuclei_test([camera])
-            resultados.extend(resultado_camera)
-
-        # Barra 100% ao terminar
-        barra.progress(100, text="Análise concluída!")
-        st.success(f"✅ Análise concluída! {len(resultados)} problema(s) encontrado(s).")
-
-        # Etapa 3: Geração dos relatórios pela IA
+    if modo_demo:
+        resultados = [
+            {'ip': '192.168.0.3', 'template_id': 'intelbras-dvr-unauth', 'nome': 'Intelbras DVR - Unrestricted Access', 'severidade': 'low', 'descricao': 'Acesso não autenticado expõe informações sensíveis.', 'encontrado_em': 'http://192.168.0.3:80/cap.js'},
+            {'ip': '192.168.0.3', 'template_id': 'intelbras-panel', 'nome': 'Intelbras Router Panel - Detect', 'severidade': 'info', 'descricao': 'Painel administrativo Intelbras detectado.', 'encontrado_em': 'http://192.168.0.3:80'},
+            {'ip': '192.168.0.3', 'template_id': 'rtsp-detect', 'nome': 'RTSP - Detect', 'severidade': 'info', 'descricao': 'Stream RTSP detectado e ativo.', 'encontrado_em': '192.168.0.3:554'},
+        ]
         with st.spinner("🤖 Gerando relatórios..."):
             relatorios = processar_resultados(resultados)
-
-        # Exibe o relatório de cada câmera
         st.subheader("📋 Relatórios de Segurança")
         for ip, relatorio in relatorios.items():
             with st.expander(f"📷 Câmera: {ip}"):
                 st.markdown(relatorio)
+
+    else:
+        # Etapa 1: Descoberta de câmeras
+        st.info("🔎 Procurando câmeras na rede...")
+        cameras = escanear_rede(mascara)
+
+        if not cameras:
+            st.warning("Nenhuma câmera encontrada na rede informada.")
+
+        else:
+            st.success(f"✅ {len(cameras)} câmera(s) encontrada(s)!")
+            st.info("🔍 Analisando a segurança das câmeras...")
+            barra = st.progress(0, text="Iniciando análise...")
+
+            resultados = []
+            for i, camera in enumerate(cameras):
+                barra.progress(
+                    int((i / len(cameras)) * 100),
+                    text=f"Analisando câmera {i + 1} de {len(cameras)}: {camera['ip']}"
+                )
+                resultado_camera = nuclei_test([camera])
+                resultados.extend(resultado_camera)
+
+            barra.progress(100, text="Análise concluída!")
+            st.success(f"✅ Análise concluída! {len(resultados)} problema(s) encontrado(s).")
+
+            with st.spinner("🤖 Gerando relatórios..."):
+                relatorios = processar_resultados(resultados)
+
+            st.subheader("📋 Relatórios de Segurança")
+            for ip, relatorio in relatorios.items():
+                with st.expander(f"📷 Câmera: {ip}"):
+                    st.markdown(relatorio)

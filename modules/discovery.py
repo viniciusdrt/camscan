@@ -1,12 +1,12 @@
-import nmap
 import json
 
+import nmap
 def escanear_rede(ipgeral):
     scanner = nmap.PortScanner()
     dispositivos = scanner.scan(ipgeral, '80,443,554,8080,8554')
     cameras = []
     for ip, dados in dispositivos['scan'].items():
-        if dados['tcp'].get(554) and dados['tcp'][554]['state'] == 'open':
+        if dados.get('tcp') and dados['tcp'].get(554) and dados['tcp'][554]['state'] == 'open':
             cameras.append({
                 'ip': ip,
                 'mac': dados['addresses'].get('mac', ''),
