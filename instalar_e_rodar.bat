@@ -1,66 +1,111 @@
 @echo off
+setlocal enableextensions
 title CamScan - Instalador
+
+:: ============================================================
+:: Truque: se foi chamado por duplo-clique, relanca com cmd /k
+:: para a janela NUNCA fechar sozinha (sempre veremos o erro).
+:: ============================================================
+if not defined CAMSCAN_RELAUNCHED (
+    set "CAMSCAN_RELAUNCHED=1"
+    start "" cmd /k "%~f0"
+    exit /b
+)
+
+:: ============================================================
+:: Auto-eleva para Administrador se necessario
+:: ============================================================
+net session >nul 2>&1
+if errorlevel 1 (
+    echo Solicitando privilegios de Administrador...
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/k','\"%~f0\"' -Verb RunAs"
+    exit /b
+)
+
+:: ============================================================
+:: Vai para a pasta do script (pushd suporta UNC)
+:: ============================================================
+pushd "%~dp0" || (
+    echo ERRO: nao consegui acessar a pasta: %~dp0
+    goto :FIM
+)
+
 echo =============================================
 echo        BEM-VINDO AO CAMSCAN
 echo =============================================
 echo.
 
-:: Verifica se Python esta instalado
+:: ============================================================
+:: [1/5] Python
+:: ============================================================
 echo [1/5] Verificando Python...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo Python nao encontrado. Baixando...
-    curl -o python_installer.exe https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe
-    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1
-    del python_installer.exe
+    curl -L -o python_installer.exe https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe
+    if errorlevel 1 (
+        echo ERRO ao baixar o Python.
+        goto :FIM
+    )
+    echo Instalando Python ^(aguarde alguns minutos^)...
+    start /wait "" python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1
+    del python_installer.exe >nul 2>&1
+    set "PATH=%PATH%;C:\Program Files\Python313;C:\Program Files\Python313\Scripts"
     echo Python instalado!
-    echo.
-    echo IMPORTANTE: O Python foi instalado agora.
-    echo Por favor, feche esta janela e execute o instalar_e_rodar.bat novamente.
-    pause
-    exit
 ) else (
     echo Python ja instalado!
 )
 
-:: Verifica se Nmap esta instalado
+:: ============================================================
+:: [2/5] Nmap
+:: ============================================================
 echo.
 echo [2/5] Verificando Nmap...
 nmap --version >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo Nmap nao encontrado. Baixando...
-    curl -o nmap_installer.exe https://nmap.org/dist/nmap-7.95-setup.exe
-    nmap_installer.exe /S
-    del nmap_installer.exe
+    curl -L -o nmap_installer.exe https://nmap.org/dist/nmap-7.95-setup.exe
+    if errorlevel 1 (
+        echo ERRO ao baixar o Nmap.
+        goto :FIM
+    )
+    echo Instalando Nmap ^(aguarde alguns minutos^)...
+    start /wait "" nmap_installer.exe /S
+    del nmap_installer.exe >nul 2>&1
+    set "PATH=%PATH%;C:\Program Files (x86)\Nmap;C:\Program Files\Nmap"
     echo Nmap instalado!
-    echo.
-    echo IMPORTANTE: O Nmap foi instalado agora.
-    echo Por favor, feche esta janela e execute o instalar_e_rodar.bat novamente.
-    pause
-    exit
 ) else (
     echo Nmap ja instalado!
 )
 
-:: Instala bibliotecas Python
+:: ============================================================
+:: [3/5] Bibliotecas Python
+:: ============================================================
 echo.
 echo [3/5] Instalando bibliotecas Python...
-pip install python-nmap streamlit groq python-dotenv
+python -m pip install --upgrade pip
+python -m pip install python-nmap streamlit groq python-dotenv
+if errorlevel 1 (
+    echo ERRO ao instalar bibliotecas Python.
+    goto :FIM
+)
 echo Bibliotecas instaladas!
 
-:: Verifica se nuclei.exe existe na pasta
+:: ============================================================
+:: [4/5] Nuclei
+:: ============================================================
 echo.
 echo [4/5] Verificando Nuclei...
 if not exist nuclei.exe (
-    echo ATENCAO: nuclei.exe nao encontrado na pasta.
-    echo Certifique-se de que o nuclei.exe esta na mesma pasta que este arquivo.
-    pause
-    exit
-) else (
-    echo Nuclei encontrado!
+    echo ATENCAO: nuclei.exe nao encontrado nesta pasta.
+    echo Coloque o nuclei.exe junto com este arquivo .bat.
+    goto :FIM
 )
+echo Nuclei encontrado!
 
-:: Inicia o CamScan
+:: ============================================================
+:: [5/5] Inicia o CamScan
+:: ============================================================
 echo.
 echo [5/5] Iniciando CamScan...
 echo =============================================
@@ -70,4 +115,11 @@ echo =============================================
 echo.
 python -m streamlit run interface_streamlit.py
 
-pause
+:FIM
+popd >nul 2>&1
+echo.
+echo =============================================
+echo   Fim da execucao. Pressione qualquer tecla.
+echo =============================================
+pause >nul
+endlocal
