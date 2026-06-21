@@ -1,101 +1,219 @@
-"""
-Módulo 3 - LLM ChatBot (llm_response)
-Recebe vulnerabilidades de câmeras IP e devolve análise amigável ao usuário.
-Utiliza a API do Groq com o modelo llama-3.3-70b-versatile.
-"""
-
 from groq import Groq
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-def processar_resultados(resultados: list) -> dict:
-    # 1. Agrupa os achados por IP
-    cameras = {}
-    for achado in resultados:
-        ip = achado['ip']
-        if ip not in cameras:
-            cameras[ip] = []
-        cameras[ip].append(achado)
 
-    # 2. Para cada câmera, monta a mensagem e chama a IA
+def eh_cve(achado: dict) -> bool:
+    """
+    Verifica se um achado parece ser uma CVE.
+    """
+    template_id = str(achado.get("template_id", "")).upper()
+    nome = str(achado.get("nome", "")).upper()
+
+    return template_id.startswith("CVE-") or nome.startswith("CVE-")
+
+
+def obter_codigo_cve(achado: dict) -> str:
+    """
+    Retorna o código CVE do achado, quando existir.
+    """
+    template_id = str(achado.get("template_id", ""))
+    nome = str(achado.get("nome", ""))
+
+    if template_id.upper().startswith("CVE-"):
+        return template_id
+
+    if nome.upper().startswith("CVE-"):
+        return nome
+
+    return ""
+
+
+def montar_lista_cves(achados: list) -> str:
+    """
+    Cria uma lista técnica simples com os CVEs encontrados.
+    Essa parte é adicionada ao final do relatório para garantir
+    que os códigos apareçam na interface.
+    """
+    cves = []
+
+    for achado in achados:
+        codigo = obter_codigo_cve(achado)
+
+        if codigo and codigo not in cves:
+            cves.append(codigo)
+
+    if not cves:
+        return ""
+
+    linhas = [
+        "",
+        "6. REFERÊNCIAS TÉCNICAS DAS FALHAS CONHECIDAS",
+        "",
+        "Estes códigos foram localizados por semelhança com a identificação do equipamento e precisam ser confirmados pelo modelo e firmware:",
+    ]
+
+    for codigo in cves:
+        linhas.append(f"- {codigo}")
+
+    linhas.append("")
+    linhas.append(
+        "Esses códigos servem para consulta técnica pelo responsável de TI ou pelo suporte do fabricante."
+    )
+
+    return "\n".join(linhas)
+
+
+def _relatorio_local(ip: str, achados: list, quantidade_cves: int) -> str:
+    pesos = {"info": 0, "unknown": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+    maior = max((pesos.get(str(a.get("severidade", "unknown")).lower(), 0) for a in achados), default=0)
+    classificacoes = {
+        0: "✅ SEGURA nas verificações executadas",
+        1: "⚠️ PODE MELHORAR",
+        2: "🔴 VULNERÁVEL",
+        3: "🚨 CRÍTICA",
+        4: "🚨 CRÍTICA",
+    }
+    linhas = [
+        f"### 1. Classificação\n{classificacoes[maior]}",
+        "### 2. Resumo geral",
+        f"Foram encontrados {len(achados)} problema(s) pela varredura.",
+    ]
+    if quantidade_cves:
+        linhas.append(f"Também foram localizadas {quantidade_cves} CVE(s) potenciais; veja a seção específica.")
+    linhas.append("### 3. O que encontramos")
+    if not achados:
+        linhas.append("Nenhum problema foi encontrado pelas verificações executadas.")
+    for achado in achados:
+        linhas.append(
+            f"- **{achado.get('nome', 'Achado')}** "
+            f"({achado.get('severidade', 'unknown')}): {achado.get('descricao', 'Sem descrição')}"
+        )
+    linhas.extend([
+        "### 4. O que você deve fazer",
+        "Mantenha o firmware atualizado, use uma senha forte e revise periodicamente a exposição da câmera.",
+        "### 5. Conclusão",
+        f"Relatório local da câmera {ip}, gerado sem enviar dados a serviços de IA.",
+    ])
+    return "\n\n".join(linhas)
+
+
+def processar_resultados(resultados: list, cameras: list | None = None, usar_ia=False) -> dict:
+    cameras_por_ip = {camera["ip"]: [] for camera in (cameras or [])}
+
+    for achado in resultados:
+        ip = achado["ip"]
+
+        if ip not in cameras_por_ip:
+            cameras_por_ip[ip] = []
+
+        cameras_por_ip[ip].append(achado)
+
     relatorios = {}
-    for ip, achados in cameras.items():
-        # Monta a mensagem organizada com os dados do Nuclei
-        linhas = [f"Câmera: {ip}\n", "Problemas encontrados:"]
-        for achado in achados:
+
+    for ip, achados in cameras_por_ip.items():
+        cves = [achado for achado in achados if eh_cve(achado)]
+        outros_achados = [achado for achado in achados if not eh_cve(achado)]
+        linhas = [
+            f"Câmera: {ip}",
+            "",
+            "Problemas encontrados:" if achados else "Nenhum problema foi encontrado pelas verificações executadas.",
+        ]
+
+        for achado in outros_achados:
             linhas.append(
-                f"- Severidade: {achado['severidade']} | "
-                f"Nome: {achado['nome']} | "
-                f"Descrição: {achado['descricao']}"
+                "- Tipo: Achado da varredura | "
+                f"Severidade: {achado.get('severidade', 'unknown')} | "
+                f"Nome: {achado.get('nome', 'Sem nome')} | "
+                f"Descrição: {achado.get('descricao', 'Sem descrição')}"
             )
+
+        if cves:
+            linhas.append(
+                f"- Foram encontradas {len(cves)} CVE(s) potencialmente relacionada(s). "
+                "Não apresente códigos nem detalhes neste relatório; eles estão na seção específica de CVEs."
+            )
+
         mensagem = "\n".join(linhas)
 
-        # 3. Chama a IA com a mensagem montada
-        relatorios[ip] = resposta_chatbot(mensagem)
+        if usar_ia:
+            try:
+                relatorios[ip] = resposta_chatbot(mensagem)
+            except Exception:
+                relatorios[ip] = _relatorio_local(ip, outros_achados, len(cves))
+        else:
+            relatorios[ip] = _relatorio_local(ip, outros_achados, len(cves))
 
     return relatorios
 
 
-def resposta_chatbot(mensagem):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+def resposta_chatbot(mensagem: str) -> str:
+    chave_api = os.getenv("GROQ_API_KEY")
+
+    if not chave_api:
+        return (
+            "Erro: a chave da API da Groq não foi encontrada.\n\n"
+            "Verifique se o arquivo .env contém a variável GROQ_API_KEY."
+        )
+
+    client = Groq(api_key=chave_api)
 
     system_prompt = """
 Você é um assistente de segurança digital especializado em câmeras IP.
+
 Seu trabalho é analisar os resultados de uma varredura de segurança e gerar um relatório SIMPLES, CLARO e HUMANO para o dono de uma pequena empresa, condomínio ou clínica — alguém que não entende de tecnologia.
 
+Os achados podem vir de duas fontes diferentes:
+- Varredura local, que encontra problemas dentro da rede interna
+- Uma contagem de CVEs potenciais. Neste relatório mencione SOMENTE a quantidade; os detalhes ficam em outra seção da interface.
+
+Trate cada tipo com a devida importância sem afirmar riscos que não foram confirmados.
+
 CLASSIFICAÇÃO OBRIGATÓRIA:
-Com base nos achados, classifique a câmera em exatamente um desses níveis:
-- ✅ SEGURA — Nenhum problema encontrado.
-- ⚠️ PODE MELHORAR — Pequenos ajustes aumentariam a segurança.
-- 🔴 VULNERÁVEL — Há problemas que precisam ser corrigidos.
-- 🚨 CRÍTICA — A câmera está em risco sério e precisa de ação imediata.
+- ✅ SEGURA — Todos os achados são informativos, sem risco real.
+- ⚠️ PODE MELHORAR — O achado mais grave é "low".
+- 🔴 VULNERÁVEL — O achado mais grave é "medium".
+- 🚨 CRÍTICA — O achado mais grave é "high" ou "critical".
 
-CRITÉRIOS DE CLASSIFICAÇÃO (siga rigorosamente):
-- ✅ SEGURA: Todos os achados são "info". Nenhum problema real.
-- ⚠️ PODE MELHORAR: O achado mais grave é "low".
-- 🔴 VULNERÁVEL: O achado mais grave é "medium".
-- 🚨 CRÍTICA: O achado mais grave é "high" ou "critical".
-
-Sempre use o achado MAIS GRAVE para definir a classificação final.
-
-ESTRUTURA DO RELATÓRIO (siga sempre essa ordem):
+ESTRUTURA DO RELATÓRIO:
 
 1. CLASSIFICAÇÃO
-   Informe o nível da câmera com o emoji e o nome (ex: 🔴 VULNERÁVEL).
+Informe o nível com emoji e nome.
 
 2. RESUMO GERAL
-   Em 2 a 3 frases simples, explique a situação geral da câmera. Imagine que está falando com alguém que nunca ouviu falar em "porta", "protocolo" ou "header". Use linguagem do dia a dia.
+Escreva 2 a 3 frases simples explicando a situação. Sem exagero e sem termos difíceis.
 
 3. O QUE ENCONTRAMOS
-   Para cada problema detectado, escreva um bloco com:
-   - Nome simples do problema (invente um nome fácil se necessário)
-   - O que isso significa na prática (sem termos técnicos)
-   - Se é algo urgente ou não
+Para cada problema encontrado, explique:
+- Nome simples do problema
+- O que significa na prática
+- Urgência
+
+Quando houver CVEs, informe apenas quantos resultados potenciais foram encontrados e diga que as explicações estão na seção "Detalhes das CVEs". Não cite códigos, CVSS, descrições técnicas ou detalhes individuais neste primeiro relatório.
 
 4. O QUE VOCÊ DEVE FAZER
-   Lista numerada de passos práticos, do mais urgente ao menos urgente.
-   Cada passo deve ser uma ação concreta que qualquer pessoa consiga entender.
-   Exemplo: "1. Troque a senha padrão da câmera. Para fazer isso, acesse..."
+Crie uma lista numerada do mais urgente ao menos urgente.
+Use ações concretas e simples.
 
 5. CONCLUSÃO
-   Uma frase encorajadora e direta resumindo a situação.
+Escreva uma frase encorajadora e direta.
 
-REGRAS DE LINGUAGEM:
-- Nunca use: IP, porta, protocolo, header, CVE, template, autenticação, RTSP, HTTP, payload.
-- Se precisar mencionar algo técnico, explique com uma analogia simples.
-- Tom: calmo, direto e prestativo. Nunca alarmista desnecessariamente.
-- Responda SEMPRE em português do Brasil.
+REGRAS:
+- Responda sempre em português do Brasil.
+- Use linguagem simples.
+- Evite termos técnicos desnecessários.
+- Use a palavra CVE apenas para informar a quantidade encontrada.
+- Não explique CVEs individualmente neste relatório.
+- Tom: calmo, direto e prestativo.
 """
 
-
-
     resposta = client.chat.completions.create(
-        model='llama-3.3-70b-versatile',
+        model="llama-3.3-70b-versatile",
         messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': mensagem}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": mensagem}
         ]
     )
 

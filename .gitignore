@@ -1,4 +1,8 @@
 .env
 __pycache__/
 *.pyc
-nuclei.exe
+CONTEXTO_LOCAL.md
+.camscan_cache/
+.camscan_audit/
+.venv/
+desktop.ini

@@ -1,1 +1,8 @@
-
+streamlit==1.58.0
+python-nmap==0.7.1
+requests==2.34.2
+python-dotenv==1.2.2
+groq==1.4.0
+onvif-zeep==0.2.12
+WSDiscovery==2.1.2
+zeroconf==0.149.16
