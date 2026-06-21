@@ -82,9 +82,17 @@ if errorlevel 1 (
 :: [3/5] Bibliotecas Python
 :: ============================================================
 echo.
-echo [3/5] Instalando bibliotecas Python...
+echo [3/5] Preparando ambiente virtual e instalando bibliotecas Python...
+if not exist .venv (
+    python -m venv .venv
+    if errorlevel 1 (
+        echo ERRO ao criar ambiente virtual.
+        goto :FIM
+    )
+)
+call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
-python -m pip install python-nmap streamlit groq python-dotenv
+python -m pip install -r requirements.txt
 if errorlevel 1 (
     echo ERRO ao instalar bibliotecas Python.
     goto :FIM
