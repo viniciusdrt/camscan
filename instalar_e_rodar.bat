@@ -99,6 +99,13 @@ if errorlevel 1 (
 )
 echo Bibliotecas instaladas!
 
+if not exist .env (
+    if exist .env.example (
+        copy .env.example .env >nul
+        echo Arquivo .env criado a partir de .env.example.
+    )
+)
+
 :: ============================================================
 :: [4/5] Nuclei
 :: ============================================================
